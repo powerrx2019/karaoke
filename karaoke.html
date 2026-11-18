@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Karaoke</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#120a2a;--panel:#1d1240;--pink:#ff2e88;--sun:#ffd23f;--dim:#7a6fa8;--txt:#fff}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at 50% 20%,#35146b 0%,var(--bg) 65%);color:var(--txt);font-family:Fredoka,system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+#panel{background:var(--panel);padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:2px solid #ffffff14}
+#panel.off{display:none}
+input,select,textarea,button{font:inherit;font-size:15px;border-radius:8px;border:1px solid #ffffff30;background:#0e0722;color:var(--txt);padding:8px 10px}
+input{flex:1 1 220px;min-width:0}
+button{background:var(--pink);border-color:var(--pink);font-weight:700;cursor:pointer}
+button.sec{background:#0e0722;border-color:#ffffff30;font-weight:500}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+select{flex:1 1 100%}
+details{flex:1 1 100%}
+summary{cursor:pointer;color:var(--dim)}
+textarea{width:100%;height:110px;margin-top:6px;resize:vertical}
+#msg{flex:1 1 100%;color:var(--dim);font-size:14px;min-height:1.2em}
+#stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:2vh 3vw 8vh}
+#lyrics{width:100%;max-width:92vw;text-align:center;display:flex;flex-direction:column;gap:2.2vh}
+.l{font-weight:700;line-height:1.12;color:var(--dim);font-size:clamp(22px,3.8vw,64px);opacity:.85;transition:opacity .3s}
+.l.cur{font-size:clamp(34px,7.2vw,130px);color:transparent;background:linear-gradient(90deg,var(--sun) var(--p,0%),#fff var(--p,0%));-webkit-background-clip:text;background-clip:text;text-shadow:none;filter:drop-shadow(0 0 .25em #ff2e8899);opacity:1}
+.l.pre{opacity:.4}
+#hint{color:var(--dim);font-size:clamp(18px,2.4vw,36px);text-align:center}
+#pv{position:absolute;right:16px;bottom:16px;width:min(26vw,360px);aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:2px solid #ffffff30;background:#000;z-index:2}
+#pv.big{width:min(70vw,1100px);right:50%;transform:translateX(50%);bottom:auto;top:12px}
+#pv iframe{width:100%;height:100%;display:block}
+#foot{position:absolute;left:14px;bottom:10px;color:var(--dim);font-size:13px}
+#panel.off ~ #stage #foot{display:none}
+@media (max-width:700px){#pv{width:44vw}}
+@media (prefers-reduced-motion:reduce){.l{transition:none}}
+</style>
+</head>
+<body>
+<div id="panel">
+  <input id="url" placeholder="Pega la dirección del video de YouTube" aria-label="Dirección de YouTube">
+  <button id="go">Cargar video</button>
+  <input id="q" placeholder="Artista y canción (para buscar la letra)" aria-label="Buscar letra">
+  <button id="find">Buscar letra</button>
+  <select id="res" aria-label="Resultados" hidden></select>
+  <details>
+    <summary>Pegar la letra a mano</summary>
+    <textarea id="txt" placeholder="Pega la letra aquí. Si trae tiempos tipo [01:23.45] se sincroniza sola; si no, avanzas con las flechas."></textarea>
+    <button class="sec" id="use" style="margin-top:6px">Usar esta letra</button>
+  </details>
+  <button class="sec" id="fs">Pantalla completa</button>
+  <button class="sec" id="size">Video grande/chico</button>
+  <button class="sec" id="hide">Ocultar panel (H)</button>
+  <div id="msg">Atajos: H oculta el panel · F pantalla completa · ← → cambia de línea (letra sin tiempos) · − + ajustan el desfase de la letra · Espacio pausa.</div>
+</div>
+<div id="stage">
+  <div id="lyrics"><div id="hint">Carga un video y busca su letra</div></div>
+  <div id="pv"><div id="yt"></div></div>
+  <div id="foot"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let player = null, lines = [], synced = false, idx = -1, offset = 0, manualIdx = 0, pendingId = null;
+
+// ---------- YouTube ----------
+const tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(tag);
+window.onYouTubeIframeAPIReady = () => { if (pendingId) makePlayer(pendingId); };
+
+function ytId(s){
+  const m = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([\w-]{11})/) || s.match(/^([\w-]{11})$/);
+  return m ? m[1] : null;
+}
+function makePlayer(id){
+  if (player && player.loadVideoById){ player.loadVideoById(id); return; }
+  player = new YT.Player('yt', {videoId: id, width:'100%', height:'100%',
+    playerVars:{playsinline:1, rel:0, modestbranding:1}});
+}
+function loadVideo(){
+  const id = ytId($('url').value.trim());
+  if (!id){ say('No reconozco esa dirección de YouTube.'); return; }
+  pendingId = id;
+  if (window.YT && YT.Player) makePlayer(id);
+  fetch('https://noembed.com/embed?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id))
+    .then(r => r.json()).then(d => {
+      if (d.title && !$('q').value){
+        $('q').value = d.title.replace(/\(.*?\)|\[.*?\]|official|video|lyrics|letra|oficial|hd|4k/gi,'').replace(/\s+/g,' ').trim();
+        say('Título detectado. Da clic en “Buscar letra”.');
+      }
+    }).catch(()=>{});
+}
+
+// ---------- Letra ----------
+function say(t){ $('msg').textContent = t; }
+function parseLyrics(raw){
+  const out = [], re = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
+  let any = false;
+  raw.split(/\r?\n/).forEach(row => {
+    const stamps = [...row.matchAll(re)];
+    const text = row.replace(re,'').trim();
+    if (stamps.length){ any = true; stamps.forEach(m => out.push({t: +m[1]*60 + +m[2], text: text || '♪'})); }
+    else if (text) out.push({t: null, text});
+  });
+  synced = any;
+  if (any) out.sort((a,b)=>a.t-b.t);
+  return any ? out.filter(l => l.t !== null) : out;
+}
+function setLyrics(raw){
+  lines = parseLyrics(raw); idx = -2; manualIdx = 0; offset = 0;
+  say(synced ? 'Letra sincronizada. Si va adelantada o atrasada, usa − y +.' : 'Letra sin tiempos: avanza con → (o clic en la pantalla).');
+  render(true);
+}
+async function findLyrics(){
+  const q = $('q').value.trim();
+  if (!q){ say('Escribe artista y canción.'); return; }
+  say('Buscando…');
+  try{
+    const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
+    const list = (await r.json()).filter(x => x.syncedLyrics || x.plainLyrics);
+    if (!list.length){ say('No encontré letra. Prueba con otro nombre o pégala a mano.'); return; }
+    list.sort((a,b)=> !!b.syncedLyrics - !!a.syncedLyrics);
+    const sel = $('res'); sel.hidden = false; sel.innerHTML = '';
+    list.slice(0,12).forEach((x,i) => {
+      const o = document.createElement('option'); o.value = i;
+      const d = Math.round(x.duration||0);
+      o.textContent = `${x.artistName} — ${x.trackName} (${Math.floor(d/60)}:${String(d%60).padStart(2,'0')})${x.syncedLyrics?' · sincronizada':' · sin tiempos'}`;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => pick(list[sel.value]);
+    pick(list[0]);
+  }catch(e){ say('No pude conectar con el buscador de letras. Revisa el internet o pega la letra a mano.'); }
+}
+function pick(x){ setLyrics(x.syncedLyrics || x.plainLyrics); }
+
+// ---------- Pantalla ----------
+function row(text, cls){ const d = document.createElement('div'); d.className = 'l ' + cls; d.textContent = text; return d; }
+function render(force){
+  const i = synced ? idx : manualIdx;
+  const box = $('lyrics'); box.innerHTML = '';
+  if (!lines.length){ box.innerHTML = '<div id="hint">Carga un video y busca su letra</div>'; return; }
+  if (i < 0){ box.appendChild(row('♪','cur')); if (lines[0]) box.appendChild(row(lines[0].text,'')); return; }
+  if (lines[i-1]) box.appendChild(row(lines[i-1].text,'pre'));
+  const cur = row(lines[i].text,'cur'); cur.id = 'cur'; box.appendChild(cur);
+  for (let k=1;k<=2;k++) if (lines[i+k]) box.appendChild(row(lines[i+k].text,''));
+}
+function tick(){
+  if (!player || !player.getCurrentTime || !lines.length) return;
+  if (!synced) return;
+  const t = player.getCurrentTime() + offset;
+  let n = -1;
+  for (let k=0;k<lines.length;k++){ if (lines[k].t <= t) n = k; else break; }
+  if (n !== idx){ idx = n; render(); }
+  const c = $('cur');
+  if (c && lines[idx]){
+    const end = lines[idx+1] ? lines[idx+1].t : lines[idx].t + 5;
+    const p = Math.min(100, Math.max(0, (t - lines[idx].t) / Math.max(.5, end - lines[idx].t) * 100));
+    c.style.setProperty('--p', p + '%');
+  }
+  $('foot').textContent = offset ? 'Desfase: ' + (offset>0?'+':'') + offset.toFixed(1) + ' s' : '';
+}
+setInterval(tick, 100);
+
+function step(d){
+  if (synced) return;
+  manualIdx = Math.max(0, Math.min(lines.length-1, manualIdx + d)); render();
+}
+
+// ---------- Controles ----------
+$('go').onclick = loadVideo;
+$('url').addEventListener('keydown', e => { if (e.key==='Enter') loadVideo(); });
+$('find').onclick = findLyrics;
+$('q').addEventListener('keydown', e => { if (e.key==='Enter') findLyrics(); });
+$('use').onclick = () => setLyrics($('txt').value);
+$('hide').onclick = () => $('panel').classList.toggle('off');
+$('size').onclick = () => $('pv').classList.toggle('big');
+$('fs').onclick = toggleFs;
+function toggleFs(){ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+$('stage').addEventListener('click', e => { if (!e.target.closest('#pv')) step(1); });
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) return;
+  const k = e.key.toLowerCase();
+  if (k==='h') $('panel').classList.toggle('off');
+  else if (k==='f') toggleFs();
+  else if (e.key==='ArrowRight') step(1);
+  else if (e.key==='ArrowLeft') step(-1);
+  else if (e.key==='+' || e.key==='=') offset += .5;
+  else if (e.key==='-') offset -= .5;
+  else if (e.key===' ' && player && player.getPlayerState){ e.preventDefault(); player.getPlayerState()===1 ? player.pauseVideo() : player.playVideo(); }
+});
+</script>
+</body>
+</html>
