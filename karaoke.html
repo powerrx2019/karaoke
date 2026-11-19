@@ -24,8 +24,8 @@ textarea{width:100%;height:110px;margin-top:6px;resize:vertical}
 #msg{flex:1 1 100%;color:var(--dim);font-size:14px;min-height:1.2em}
 #stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:2vh 3vw 8vh}
 #lyrics{width:100%;max-width:92vw;text-align:center;display:flex;flex-direction:column;gap:2.2vh}
-.l{font-family:var(--ff);font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.05;color:#9a8fd0;font-size:calc(var(--k)*clamp(24px,4.4vw,72px));opacity:.9;transition:opacity .3s}
-.l.cur{font-size:calc(var(--k)*var(--s,9vw));color:transparent;background:linear-gradient(90deg,var(--sun) var(--p,0%),#fff var(--p,0%));-webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 .05em 0 #7a1fff) drop-shadow(0 0 .3em #ff2e88cc);opacity:1}
+.l{font-family:var(--ff);font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.05;color:#9a8fd0;font-size:calc(var(--k)*max(20px,4.4*var(--u,1vw)));opacity:.9;transition:opacity .3s}
+.l.cur{font-size:calc(var(--k)*var(--s,9)*var(--u,1vw));color:transparent;background:linear-gradient(90deg,var(--sun) var(--p,0%),#fff var(--p,0%));-webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 .05em 0 #7a1fff) drop-shadow(0 0 .3em #ff2e88cc);opacity:1}
 .l.pre{opacity:.4}
 #hint{color:var(--dim);font-size:clamp(18px,2.4vw,36px);text-align:center}
 #pv{position:absolute;right:16px;bottom:16px;width:min(18vw,280px);aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:2px solid #ffffff30;background:#000;z-index:2}
@@ -33,7 +33,10 @@ textarea{width:100%;height:110px;margin-top:6px;resize:vertical}
 #pv iframe{width:100%;height:100%;display:block}
 #foot{position:absolute;left:14px;bottom:10px;color:var(--dim);font-size:13px}
 #panel.off ~ #stage #foot{display:none}
-@media (max-width:700px){#pv{width:44vw}}
+#stage.split{padding:2vh 2vw;gap:2vw}
+#stage.split #pv{position:static;order:-1;flex:0 0 48%;width:48%;transform:none;border-radius:16px}
+#stage.split #lyrics{flex:1;min-width:0;width:auto;max-width:none;--u:.62vw}
+@media (max-width:700px){#pv{width:44vw}#stage.split{flex-direction:column}#stage.split #pv{flex:none;width:100%}#stage.split #lyrics{--u:1.6vw}}
 @media (prefers-reduced-motion:reduce){.l{transition:none}}
 </style>
 </head>
@@ -50,11 +53,11 @@ textarea{width:100%;height:110px;margin-top:6px;resize:vertical}
     <button class="sec" id="use" style="margin-top:6px">Usar esta letra</button>
   </details>
   <select id="font" aria-label="Tipo de letra" style="flex:0 0 auto"><option>Bangers</option><option>Lilita One</option><option>Bowlby One</option><option>Fredoka</option></select><button class="sec" id="minus" aria-label="Letra más chica">A−</button><button class="sec" id="plus" aria-label="Letra más grande">A+</button><button class="sec" id="fs">Pantalla completa</button>
-  <button class="sec" id="size">Video grande/chico</button>
+  <button class="sec" id="size">Cambiar diseño</button>
   <button class="sec" id="hide">Ocultar panel (H)</button>
   <div id="msg">Atajos: H oculta el panel · F pantalla completa · ← → cambia de línea (letra sin tiempos) · − + ajustan el desfase de la letra · Espacio pausa.</div>
 </div>
-<div id="stage">
+<div id="stage" class="split">
   <div id="lyrics"><div id="hint">Carga un video y busca su letra</div></div>
   <div id="pv"><div id="yt"></div></div>
   <div id="foot"></div>
@@ -143,7 +146,7 @@ function render(force){
   if (!lines.length){ box.innerHTML = '<div id="hint">Carga un video y busca su letra</div>'; return; }
   if (i < 0){ box.appendChild(row('♪','cur')); if (lines[0]) box.appendChild(row(lines[0].text,'')); return; }
   if (lines[i-1]) box.appendChild(row(lines[i-1].text,'pre'));
-  const cur = row(lines[i].text,'cur'); cur.id = 'cur'; cur.style.setProperty('--s', Math.max(4.5, Math.min(12, 200/Math.max(8, lines[i].text.length))) + 'vw'); box.appendChild(cur);
+  const cur = row(lines[i].text,'cur'); cur.id = 'cur'; cur.style.setProperty('--s', Math.max(4.5, Math.min(12, 200/Math.max(8, lines[i].text.length)))); box.appendChild(cur);
   for (let k=1;k<=2;k++) if (lines[i+k]) box.appendChild(row(lines[i+k].text,''));
 }
 function tick(){
@@ -175,7 +178,7 @@ $('find').onclick = findLyrics;
 $('q').addEventListener('keydown', e => { if (e.key==='Enter') findLyrics(); });
 $('use').onclick = () => setLyrics($('txt').value);
 $('hide').onclick = () => $('panel').classList.toggle('off');
-$('size').onclick = () => $('pv').classList.toggle('big');
+$('size').onclick = () => $('stage').classList.toggle('split');
 $('fs').onclick = toggleFs;
 function toggleFs(){ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
 $('stage').addEventListener('click', e => { if (!e.target.closest('#pv')) step(1); });
